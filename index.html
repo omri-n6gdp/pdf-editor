@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Redline · PDF Editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<style>
+  :root{
+    --bg:#e9e7e1;
+    --workspace:#d9d6cd;
+    --bar:#1a1d23;
+    --bar-2:#23272f;
+    --panel:#ffffff;
+    --ink:#1a1d23;
+    --muted:#6b7280;
+    --faint:#9aa1ad;
+    --line:#e2e0d9;
+    --line-dark:#33373f;
+    --accent:#ec4030;
+    --accent-dim:#c5331f;
+    --blue:#2563eb;
+    --on:#2a2e36;
+    --r:10px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:'Manrope',system-ui,sans-serif;color:var(--ink);background:var(--bg);
+    display:flex;flex-direction:column;overflow:hidden;-webkit-font-smoothing:antialiased}
+
+  /* ---------- top bar ---------- */
+  .topbar{display:flex;align-items:center;gap:16px;background:var(--bar);color:#fff;padding:0 18px;height:58px;flex-shrink:0;
+    box-shadow:0 2px 14px rgba(0,0,0,0.25);z-index:20}
+  .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:17px;letter-spacing:-0.3px}
+  .logo .mark{width:26px;height:26px;border-radius:7px;background:var(--accent);display:flex;align-items:center;justify-content:center;
+    font-size:14px;box-shadow:0 0 16px rgba(236,64,48,0.5)}
+  .logo .mark::after{content:"✎";color:#fff}
+  .logo span{color:var(--faint);font-weight:500;font-size:12px;letter-spacing:0.5px;margin-left:2px}
+  .tb-spacer{flex:1}
+  .tb-file{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#cfd3da;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pagenav{display:flex;align-items:center;gap:4px;background:var(--bar-2);border-radius:9px;padding:4px}
+  .pagenav button{width:30px;height:30px;border:none;background:none;color:#cfd3da;cursor:pointer;border-radius:6px;font-size:16px;display:flex;align-items:center;justify-content:center;transition:background .15s}
+  .pagenav button:hover:not(:disabled){background:#363b44}
+  .pagenav button:disabled{opacity:0.3;cursor:default}
+  .pagenav .pp{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#fff;padding:0 8px;min-width:62px;text-align:center}
+  .zoom{display:flex;align-items:center;gap:4px;background:var(--bar-2);border-radius:9px;padding:4px}
+  .zoom button{width:30px;height:30px;border:none;background:none;color:#cfd3da;cursor:pointer;border-radius:6px;font-size:16px;transition:background .15s}
+  .zoom button:hover{background:#363b44}
+  .zoom .zv{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#fff;min-width:42px;text-align:center}
+  .tb-btn{border:none;cursor:pointer;font-family:'Manrope';font-weight:700;font-size:13.5px;border-radius:9px;padding:10px 16px;transition:all .15s;display:flex;align-items:center;gap:7px}
+  .tb-btn.ghost{background:var(--bar-2);color:#fff}
+  .tb-btn.ghost:hover{background:#363b44}
+  .tb-btn.primary{background:var(--accent);color:#fff;box-shadow:0 0 18px rgba(236,64,48,0.4)}
+  .tb-btn.primary:hover{background:var(--accent-dim)}
+  .tb-btn:disabled{opacity:0.4;cursor:default;box-shadow:none}
+
+  /* ---------- main ---------- */
+  .main{flex:1;display:flex;min-height:0}
+
+  /* toolbar */
+  .toolbar{width:66px;background:var(--bar);flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 0;
+    border-right:1px solid var(--line-dark);overflow-y:auto}
+  .tool{width:44px;height:44px;border:none;background:none;color:#aab0bb;cursor:pointer;border-radius:11px;display:flex;align-items:center;justify-content:center;
+    transition:all .15s;position:relative}
+  .tool:hover{background:var(--bar-2);color:#fff}
+  .tool.on{background:var(--accent);color:#fff;box-shadow:0 0 16px rgba(236,64,48,0.45)}
+  .tool svg{width:21px;height:21px}
+  .tool .tip{position:absolute;left:54px;top:50%;transform:translateY(-50%);background:#000;color:#fff;font-size:11.5px;font-weight:600;
+    padding:5px 9px;border-radius:6px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s;z-index:30}
+  .tool:hover .tip{opacity:1}
+  .tdiv{width:34px;height:1px;background:var(--line-dark);margin:6px 0}
+
+  /* options panel */
+  .options{width:200px;background:var(--panel);flex-shrink:0;border-right:1px solid var(--line);padding:18px 16px;overflow-y:auto}
+  .opt-h{font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--faint);font-weight:700;margin-bottom:11px}
+  .opt-sec{margin-bottom:22px}
+  .swatches{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px}
+  .sw{aspect-ratio:1;border-radius:7px;cursor:pointer;border:2px solid var(--line);transition:transform .12s,border-color .12s}
+  .sw:hover{transform:scale(1.1)}
+  .sw.on{border-color:var(--ink);box-shadow:0 0 0 2px #fff inset}
+  .sw.white{border-color:#cfcec7}
+  .color-row{display:flex;align-items:center;gap:9px}
+  .color-row input[type=color]{width:34px;height:34px;border:1px solid var(--line);border-radius:8px;background:none;cursor:pointer;padding:2px}
+  .color-row label{font-size:12.5px;color:var(--muted);font-weight:600}
+  .slider-row{display:flex;align-items:center;gap:10px}
+  .slider-row input[type=range]{flex:1;accent-color:var(--accent)}
+  .slider-row .num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink);min-width:34px;text-align:right;font-weight:500}
+  .preview-stroke{height:30px;display:flex;align-items:center;justify-content:center;margin-top:10px;border:1px dashed var(--line);border-radius:8px}
+  .opt-actions{display:flex;flex-direction:column;gap:8px}
+  .act-btn{border:1px solid var(--line);background:var(--panel);cursor:pointer;font-family:'Manrope';font-weight:600;font-size:13px;color:var(--ink);
+    padding:10px;border-radius:9px;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:7px}
+  .act-btn:hover{border-color:var(--ink);background:#faf9f6}
+  .act-btn.danger:hover{border-color:var(--accent);color:var(--accent)}
+  .act-btn:disabled{opacity:0.4;cursor:default}
+  .hint{font-size:11.5px;color:var(--faint);line-height:1.5;margin-top:6px}
+  .hint b{color:var(--muted)}
+
+  /* workspace */
+  .workspace{flex:1;background:var(--workspace);overflow:auto;position:relative;
+    background-image:radial-gradient(rgba(0,0,0,0.05) 1px,transparent 1px);background-size:22px 22px}
+  .ws-inner{min-height:100%;display:flex;align-items:flex-start;justify-content:center;padding:34px}
+  .stage{position:relative;box-shadow:0 14px 50px -12px rgba(0,0,0,0.4);background:#fff;line-height:0}
+  #bg{display:block}
+  #overlay{position:absolute;top:0;left:0;cursor:crosshair;touch-action:none}
+  .floating-text{position:absolute;border:1.5px dashed var(--accent);background:rgba(255,255,255,0.65);outline:none;resize:none;
+    font-family:'Manrope';overflow:hidden;line-height:1.25;padding:2px 3px;z-index:10;color:inherit}
+
+  /* empty state */
+  .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:18px;padding:30px}
+  .dropbox{border:2.5px dashed #b4b1a6;border-radius:18px;padding:60px 70px;text-align:center;background:rgba(255,255,255,0.4);
+    transition:all .2s;cursor:pointer;max-width:520px}
+  .dropbox.drag{border-color:var(--accent);background:rgba(236,64,48,0.06)}
+  .dropbox .ico{font-size:50px;margin-bottom:14px}
+  .dropbox h2{font-size:23px;font-weight:800;letter-spacing:-0.4px;margin-bottom:8px}
+  .dropbox p{color:var(--muted);font-size:14.5px;margin-bottom:22px;line-height:1.5}
+  .dropbox .go{display:inline-block;background:var(--accent);color:#fff;font-weight:700;padding:13px 26px;border-radius:11px;box-shadow:0 0 20px rgba(236,64,48,0.4)}
+  .empty .note{font-size:12px;color:var(--faint);max-width:440px;text-align:center;line-height:1.5}
+
+  .loading{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(217,214,205,0.8);z-index:40;flex-direction:column;gap:14px}
+  .loading.show{display:flex}
+  .spinner{width:38px;height:38px;border:3px solid rgba(0,0,0,0.15);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loading p{font-weight:600;color:var(--muted)}
+
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(150%);background:var(--bar);color:#fff;
+    padding:13px 22px;border-radius:11px;font-size:14px;font-weight:600;box-shadow:0 12px 40px rgba(0,0,0,0.4);z-index:100;transition:transform .4s cubic-bezier(.2,.8,.2,1)}
+  .toast.show{transform:translateX(-50%) translateY(0)}
+  .toast b{color:#ffb3aa}
+  @media(max-width:720px){.options{display:none}}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="logo"><div class="mark"></div>Redline<span>PDF Editor</span></div>
+    <div class="tb-spacer"></div>
+    <div class="tb-file" id="fileName"></div>
+    <div class="pagenav" id="pageNav" style="display:none">
+      <button id="prevPage" title="Previous">‹</button>
+      <div class="pp" id="pageInd">1 / 1</div>
+      <button id="nextPage" title="Next">›</button>
+    </div>
+    <div class="zoom" id="zoomCtl" style="display:none">
+      <button id="zoomOut" title="Zoom out">−</button>
+      <div class="zv" id="zoomVal">100%</div>
+      <button id="zoomIn" title="Zoom in">+</button>
+    </div>
+    <button class="tb-btn ghost" id="importBtn">⤓ Import</button>
+    <button class="tb-btn primary" id="exportBtn" disabled>⤒ Export PDF</button>
+    <input type="file" id="fileInput" accept="application/pdf" style="display:none" />
+  </div>
+
+  <div class="main">
+    <!-- toolbar -->
+    <div class="toolbar" id="toolbar">
+      <button class="tool on" data-tool="select"><span class="tip">Select / Move (V)</span>
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 2l16 7-6.5 2.2L11 18z"/></svg></button>
+      <div class="tdiv"></div>
+      <button class="tool" data-tool="pen"><span class="tip">Pen (P)</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg></button>
+      <button class="tool" data-tool="highlight"><span class="tip">Highlighter (H)</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l-6 6v3h3l6-6"/><path d="M22 6l-4-4-9 9 4 4z"/></svg></button>
+      <button class="tool" data-tool="text"><span class="tip">Text (T)</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7V5h16v2M9 5v14M9 19h6"/></svg></button>
+      <button class="tool" data-tool="whiteout"><span class="tip">White-out (E)</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><rect x="6" y="4" width="12" height="11" rx="1"/></svg></button>
+      <button class="tool" data-tool="rect"><span class="tip">Rectangle (R)</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="1.5"/></svg></button>
+      <button class="tool" data-tool="line"><span class="tip">Line (L)</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20L20 4"/></svg></button>
+    </div>
+
+    <!-- options -->
+    <div class="options" id="options">
+      <div class="opt-sec" id="colorSec">
+        <div class="opt-h">Colour</div>
+        <div class="swatches" id="swatches"></div>
+        <div class="color-row"><input type="color" id="colorPick" value="#ec4030" /><label>Custom</label></div>
+      </div>
+      <div class="opt-sec" id="sizeSec">
+        <div class="opt-h" id="sizeLabel">Stroke width</div>
+        <div class="slider-row"><input type="range" id="sizeRange" min="1" max="30" value="3" /><span class="num" id="sizeNum">3</span></div>
+        <div class="preview-stroke" id="strokePrev"></div>
+      </div>
+      <div class="opt-sec" id="fontSec" style="display:none">
+        <div class="opt-h">Font size</div>
+        <div class="slider-row"><input type="range" id="fontRange" min="8" max="72" value="18" /><span class="num" id="fontNum">18</span></div>
+      </div>
+      <div class="opt-sec">
+        <div class="opt-h">Actions</div>
+        <div class="opt-actions">
+          <button class="act-btn" id="undoBtn" disabled>↶ Undo</button>
+          <button class="act-btn danger" id="delBtn" disabled>⌫ Delete selected</button>
+          <button class="act-btn danger" id="clearBtn" disabled>✕ Clear this page</button>
+        </div>
+      </div>
+      <div class="opt-sec">
+        <div class="opt-h">Tip</div>
+        <div class="hint" id="toolHint"></div>
+      </div>
+    </div>
+
+    <!-- workspace -->
+    <div class="workspace" id="workspace">
+      <div class="ws-inner" id="wsInner">
+        <div class="stage" id="stage" style="display:none">
+          <canvas id="bg"></canvas>
+          <canvas id="overlay"></canvas>
+        </div>
+      </div>
+      <div class="empty" id="empty">
+        <div class="dropbox" id="dropbox">
+          <div class="ico">📄</div>
+          <h2>Import a PDF to start</h2>
+          <p>Drop a PDF here, or click to choose one.<br>Then draw, highlight, white-out and add text — and export a new PDF.</p>
+          <span class="go">Choose PDF</span>
+        </div>
+        <div class="note">Everything happens on your device — nothing is uploaded. Needs internet the first time to load the PDF engine.</div>
+      </div>
+      <div class="loading" id="loading"><div class="spinner"></div><p id="loadingTxt">Loading…</p></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+  const $=id=>document.getElementById(id);
+  if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+  /* ---------- state ---------- */
+  let pdfDoc=null, pdfBytes=null, fileName="", numPages=0, curPage=1;
+  let pagePts={w:600,h:800}, renderScale=1;
+  let annotations={};            // pageIndex(0-based) -> [obj]
+  let tool="select", color="#ec4030", size=3, fontSize=18;
+  let selected=null;             // reference to an annotation obj on current page
+  const history=[];              // snapshots of annotations (JSON)
+  let dirty=false;
+
+  const bg=$("bg"), overlay=$("overlay");
+  const bgctx=bg.getContext("2d"), octx=overlay.getContext("2d");
+  const measureCtx=document.createElement("canvas").getContext("2d");
+
+  const TOOL_HINTS={
+    select:"Click an item to select it, then drag to move or press Delete. Double-click text to edit it.",
+    pen:"Click and drag to draw freehand.",
+    highlight:"Drag across text to highlight. Pick a bright colour.",
+    text:"Click where you want text, then type. Click away to finish. Double-click later to edit.",
+    whiteout:"Drag a box over text you want to hide — then use the Text tool to write the replacement.",
+    rect:"Drag to draw a box outline. Set the colour and stroke width on the left.",
+    line:"Drag to draw a straight line, then release.",
+  };
+  const SWATCHES=["#1a1d23","#ec4030","#2563eb","#16a34a","#f4c20d","#ffffff"];
+
+  /* ---------- helpers ---------- */
+  function anns(){return annotations[curPage-1]||(annotations[curPage-1]=[]);}
+  function pushHistory(){history.push(JSON.stringify(annotations));if(history.length>50)history.shift();$("undoBtn").disabled=false;markDirty();}
+  function markDirty(){dirty=true;}
+  function toast(m){const t=$("toast");t.innerHTML=m;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),2400);}
+
+  /* ---------- import ---------- */
+  $("importBtn").onclick=()=>$("fileInput").click();
+  $("dropbox").onclick=()=>$("fileInput").click();
+  $("fileInput").onchange=e=>{if(e.target.files[0])loadPDF(e.target.files[0]);};
+  const dz=$("dropbox");
+  ["dragover"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add("drag");}));
+  dz.addEventListener("dragleave",()=>dz.classList.remove("drag"));
+  dz.addEventListener("drop",e=>{e.preventDefault();dz.classList.remove("drag");if(e.dataTransfer.files[0])loadPDF(e.dataTransfer.files[0]);});
+  $("workspace").addEventListener("dragover",e=>e.preventDefault());
+  $("workspace").addEventListener("drop",e=>{e.preventDefault();if(e.dataTransfer.files[0]&&/pdf/i.test(e.dataTransfer.files[0].type))loadPDF(e.dataTransfer.files[0]);});
+
+  async function loadPDF(file){
+    if(!/pdf/i.test(file.type)&&!/\.pdf$/i.test(file.name)){toast("Please choose a PDF file.");return;}
+    showLoading("Opening PDF…");
+    try{
+      const ab=await file.arrayBuffer();
+      pdfBytes=ab.slice(0);                                  // keep pristine copy for export (pdf-lib)
+      pdfDoc=await pdfjsLib.getDocument({data:new Uint8Array(ab.slice(0))}).promise;
+      numPages=pdfDoc.numPages; fileName=file.name; curPage=1; annotations={}; selected=null; history.length=0;
+      $("fileName").textContent=file.name;
+      $("empty").style.display="none"; $("stage").style.display="inline-block";
+      $("pageNav").style.display=numPages>1?"flex":"flex"; $("zoomCtl").style.display="flex";
+      $("exportBtn").disabled=false; $("clearBtn").disabled=false; $("undoBtn").disabled=true;
+      dirty=false;
+      await fitAndRender(true);
+      toast("Loaded · <b>"+numPages+"</b> page"+(numPages>1?"s":""));
+    }catch(err){console.error(err);toast("Could not open that PDF.");}
+    hideLoading();
+  }
+  function showLoading(t){$("loadingTxt").textContent=t||"Loading…";$("loading").classList.add("show");}
+  function hideLoading(){$("loading").classList.remove("show");}
+
+  /* ---------- render page ---------- */
+  async function fitAndRender(resetZoom){
+    const page=await pdfDoc.getPage(curPage);
+    const vp1=page.getViewport({scale:1}); pagePts={w:vp1.width,h:vp1.height};
+    if(resetZoom){const avail=$("workspace").clientWidth-90;renderScale=Math.min(1.7,Math.max(0.35,avail/pagePts.w));}
+    await drawBg(page);
+    redraw(); updatePageUI();
+  }
+  async function drawBg(page){
+    const vp=page.getViewport({scale:renderScale});
+    bg.width=vp.width; bg.height=vp.height; overlay.width=vp.width; overlay.height=vp.height;
+    bg.style.width=overlay.style.width=vp.width+"px"; bg.style.height=overlay.style.height=vp.height+"px";
+    await page.render({canvasContext:bgctx,viewport:vp}).promise;
+  }
+  function updatePageUI(){
+    $("pageInd").textContent=curPage+" / "+numPages;
+    $("prevPage").disabled=curPage<=1; $("nextPage").disabled=curPage>=numPages;
+    $("zoomVal").textContent=Math.round(renderScale*100)+"%";
+  }
+  async function gotoPage(p){if(p<1||p>numPages)return;commitText();curPage=p;selected=null;await fitAndRender(false);}
+  $("prevPage").onclick=()=>gotoPage(curPage-1);
+  $("nextPage").onclick=()=>gotoPage(curPage+1);
+  $("zoomIn").onclick=async()=>{renderScale=Math.min(4,renderScale*1.2);const p=await pdfDoc.getPage(curPage);await drawBg(p);redraw();updatePageUI();};
+  $("zoomOut").onclick=async()=>{renderScale=Math.max(0.25,renderScale/1.2);const p=await pdfDoc.getPage(curPage);await drawBg(p);redraw();updatePageUI();};
+
+  /* ---------- coordinate mapping ---------- */
+  function toPt(e){const r=overlay.getBoundingClientRect();return{x:(e.clientX-r.left)/renderScale,y:(e.clientY-r.top)/renderScale};}
+
+  /* ---------- drawing primitives (used by overlay + export) ---------- */
+  function drawOne(ctx,a,s){
+    ctx.save();
+    if(a.type==="path"||a.type==="highlight"){
+      ctx.strokeStyle=a.color;ctx.lineWidth=a.width*s;ctx.lineCap="round";ctx.lineJoin="round";
+      if(a.type==="highlight")ctx.globalAlpha=0.38;
+      ctx.beginPath();a.points.forEach((p,i)=>{const x=p.x*s,y=p.y*s;i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+      if(a.points.length===1){const p=a.points[0];ctx.lineTo(p.x*s+0.1,p.y*s+0.1);}
+      ctx.stroke();
+    }else if(a.type==="whiteout"){
+      ctx.fillStyle="#ffffff";ctx.fillRect(a.x*s,a.y*s,a.w*s,a.h*s);
+    }else if(a.type==="rect"){
+      ctx.strokeStyle=a.color;ctx.lineWidth=a.width*s;ctx.strokeRect(a.x*s,a.y*s,a.w*s,a.h*s);
+    }else if(a.type==="line"){
+      ctx.strokeStyle=a.color;ctx.lineWidth=a.width*s;ctx.lineCap="round";
+      ctx.beginPath();ctx.moveTo(a.x1*s,a.y1*s);ctx.lineTo(a.x2*s,a.y2*s);ctx.stroke();
+    }else if(a.type==="text"){
+      ctx.fillStyle=a.color;ctx.textBaseline="top";ctx.font="600 "+(a.size*s)+"px Manrope, sans-serif";
+      const lh=a.size*1.28*s;a.text.split("\n").forEach((ln,i)=>ctx.fillText(ln,a.x*s,a.y*s+i*lh));
+    }
+    ctx.restore();
+  }
+
+  function bboxOf(a){
+    if(a.type==="path"||a.type==="highlight"){
+      let xs=a.points.map(p=>p.x),ys=a.points.map(p=>p.y);const pad=(a.width/2)+2;
+      return{x:Math.min(...xs)-pad,y:Math.min(...ys)-pad,w:Math.max(...xs)-Math.min(...xs)+pad*2,h:Math.max(...ys)-Math.min(...ys)+pad*2};
+    }
+    if(a.type==="line"){const x=Math.min(a.x1,a.x2),y=Math.min(a.y1,a.y2);const pad=(a.width/2)+2;
+      return{x:x-pad,y:y-pad,w:Math.abs(a.x2-a.x1)+pad*2,h:Math.abs(a.y2-a.y1)+pad*2};}
+    if(a.type==="text"){measureCtx.font="600 "+a.size+"px Manrope, sans-serif";
+      const lines=a.text.split("\n");let w=0;lines.forEach(l=>w=Math.max(w,measureCtx.measureText(l).width));
+      return{x:a.x-2,y:a.y-2,w:w+6,h:lines.length*a.size*1.28+6};}
+    // rect / whiteout — normalise
+    const x=a.w<0?a.x+a.w:a.x, y=a.h<0?a.y+a.h:a.y;
+    return{x:x-2,y:y-2,w:Math.abs(a.w)+4,h:Math.abs(a.h)+4};
+  }
+
+  /* ---------- redraw overlay ---------- */
+  function redraw(){
+    octx.clearRect(0,0,overlay.width,overlay.height);
+    anns().forEach(a=>drawOne(octx,a,renderScale));
+    if(selected){const b=bboxOf(selected);octx.save();
+      octx.strokeStyle="#ec4030";octx.lineWidth=1.5;octx.setLineDash([5,4]);
+      octx.strokeRect(b.x*renderScale-3,b.y*renderScale-3,b.w*renderScale+6,b.h*renderScale+6);
+      octx.restore();}
+    $("delBtn").disabled=!selected;
+  }
+
+  /* ---------- pointer interaction ---------- */
+  let drawing=false, cur=null, dragInfo=null;
+  overlay.addEventListener("pointerdown",e=>{
+    if($("stage").style.display==="none")return;
+    overlay.setPointerCapture(e.pointerId);
+    const p=toPt(e);
+    if(tool==="select"){
+      const hit=hitTest(p);
+      selected=hit;
+      if(hit){dragInfo={start:p,moved:false,orig:JSON.parse(JSON.stringify(hit))};}
+      redraw();return;
+    }
+    if(tool==="text"){openTextEditor(p.x,p.y);return;}
+    // creating shapes / strokes
+    pushHistory();drawing=true;
+    if(tool==="pen"){cur={type:"path",color,width:size,points:[p]};}
+    else if(tool==="highlight"){cur={type:"highlight",color,width:Math.max(size,12),points:[p]};}
+    else if(tool==="whiteout"){cur={type:"whiteout",x:p.x,y:p.y,w:0,h:0};}
+    else if(tool==="rect"){cur={type:"rect",color,width:size,x:p.x,y:p.y,w:0,h:0};}
+    else if(tool==="line"){cur={type:"line",color,width:size,x1:p.x,y1:p.y,x2:p.x,y2:p.y};}
+    anns().push(cur);redraw();
+  });
+  overlay.addEventListener("pointermove",e=>{
+    const p=toPt(e);
+    if(tool==="select"&&dragInfo){
+      if(!dragInfo.moved){pushHistory();dragInfo.moved=true;}
+      const dx=p.x-dragInfo.start.x, dy=p.y-dragInfo.start.y;
+      translate(selected,dragInfo.orig,dx,dy);redraw();return;
+    }
+    if(!drawing||!cur)return;
+    if(cur.type==="path"||cur.type==="highlight")cur.points.push(p);
+    else if(cur.type==="whiteout"||cur.type==="rect"){cur.w=p.x-cur.x;cur.h=p.y-cur.y;}
+    else if(cur.type==="line"){cur.x2=p.x;cur.y2=p.y;}
+    redraw();
+  });
+  overlay.addEventListener("pointerup",()=>{
+    if(tool==="select"&&dragInfo){dragInfo=null;return;}
+    if(!drawing)return;drawing=false;
+    // discard zero-size shapes
+    if(cur&&(cur.type==="whiteout"||cur.type==="rect")&&Math.abs(cur.w)<3&&Math.abs(cur.h)<3){anns().pop();}
+    if(cur&&cur.type==="line"&&Math.hypot(cur.x2-cur.x1,cur.y2-cur.y1)<3){anns().pop();}
+    cur=null;redraw();
+  });
+
+  function translate(a,orig,dx,dy){
+    if(a.type==="path"||a.type==="highlight"){a.points=orig.points.map(p=>({x:p.x+dx,y:p.y+dy}));}
+    else if(a.type==="line"){a.x1=orig.x1+dx;a.y1=orig.y1+dy;a.x2=orig.x2+dx;a.y2=orig.y2+dy;}
+    else{a.x=orig.x+dx;a.y=orig.y+dy;}
+  }
+  function hitTest(p){const list=anns();for(let i=list.length-1;i>=0;i--){const b=bboxOf(list[i]);
+    if(p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h)return list[i];}return null;}
+
+  /* ---------- text editor ---------- */
+  let textEditor=null, editingObj=null;
+  function openTextEditor(xPt,yPt,obj){
+    commitText();
+    editingObj=obj||null;
+    const ta=document.createElement("textarea");ta.className="floating-text";
+    const x=(obj?obj.x:xPt), y=(obj?obj.y:yPt), fs=(obj?obj.size:fontSize), col=(obj?obj.color:color);
+    ta.value=obj?obj.text:"";
+    ta.style.left=(x*renderScale)+"px"; ta.style.top=(y*renderScale)+"px";
+    ta.style.fontSize=(fs*renderScale)+"px"; ta.style.color=col; ta.style.minWidth="40px";
+    ta.dataset.x=x;ta.dataset.y=y;ta.dataset.fs=fs;ta.dataset.col=col;
+    $("stage").appendChild(ta);textEditor=ta;
+    autosize(ta);ta.addEventListener("input",()=>autosize(ta));
+    ta.addEventListener("blur",commitText);
+    ta.addEventListener("keydown",ev=>{if(ev.key==="Escape"){ev.preventDefault();ta.value=obj?obj.text:"";ta.blur();}});
+    setTimeout(()=>ta.focus(),10);
+  }
+  function autosize(ta){ta.style.height="auto";ta.style.height=ta.scrollHeight+"px";
+    ta.style.width="auto";ta.style.width=Math.max(40,ta.scrollWidth+4)+"px";}
+  function commitText(){
+    if(!textEditor)return;
+    const ta=textEditor;textEditor=null;
+    const val=ta.value.replace(/\s+$/,"");
+    const x=+ta.dataset.x,y=+ta.dataset.y,fs=+ta.dataset.fs,col=ta.dataset.col;
+    ta.remove();
+    if(editingObj){
+      if(!val){anns().splice(anns().indexOf(editingObj),1);pushHistory();}
+      else{pushHistory();editingObj.text=val;}
+      editingObj=null;
+    }else if(val){
+      pushHistory();anns().push({type:"text",x,y,text:val,size:fs,color:col});
+    }
+    selected=null;redraw();
+  }
+  overlay.addEventListener("dblclick",e=>{
+    const p=toPt(e);const hit=hitTest(p);
+    if(hit&&hit.type==="text"){selected=null;openTextEditor(0,0,hit);}
+  });
+
+  /* ---------- tools ---------- */
+  function setTool(t){
+    commitText();tool=t;selected=null;redraw();
+    document.querySelectorAll(".tool").forEach(b=>b.classList.toggle("on",b.dataset.tool===t));
+    overlay.style.cursor = t==="select"?"default":(t==="text"?"text":"crosshair");
+    $("fontSec").style.display = t==="text"?"block":"none";
+    $("sizeSec").style.display = (t==="text"||t==="select")?"none":"block";
+    $("colorSec").style.display = t==="whiteout"?"none":"block";
+    $("sizeLabel").textContent = t==="highlight"?"Highlighter width":"Stroke width";
+    $("toolHint").innerHTML=TOOL_HINTS[t]||"";
+    if(t==="rect")$("toolHint").innerHTML="Drag to draw a box outline. Use stroke width &amp; colour on the left.";
+  }
+  document.querySelectorAll(".tool").forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
+  document.addEventListener("keydown",e=>{
+    if(textEditor||e.metaKey||e.ctrlKey)return;
+    const tag=(e.target.tagName||"").toLowerCase();if(tag==="input"||tag==="textarea")return;
+    const map={v:"select",p:"pen",h:"highlight",t:"text",e:"whiteout",r:"rect",l:"line"};
+    if(map[e.key]){setTool(map[e.key]);}
+    if((e.key==="Delete"||e.key==="Backspace")&&selected){e.preventDefault();deleteSelected();}
+  });
+
+  /* ---------- colour & size ---------- */
+  function buildSwatches(){$("swatches").innerHTML=SWATCHES.map(c=>
+    '<div class="sw'+(c==="#ffffff"?" white":"")+(c===color?" on":"")+'" data-c="'+c+'" style="background:'+c+'"></div>').join("");
+    $("swatches").querySelectorAll(".sw").forEach(s=>s.onclick=()=>{color=s.dataset.c;$("colorPick").value=color;refreshColorUI();applyToSelected();});}
+  function refreshColorUI(){document.querySelectorAll(".sw").forEach(s=>s.classList.toggle("on",s.dataset.c===color));updateStrokePrev();}
+  $("colorPick").oninput=e=>{color=e.target.value;refreshColorUI();applyToSelected();};
+  $("sizeRange").oninput=e=>{size=+e.target.value;$("sizeNum").textContent=size;updateStrokePrev();applyToSelected();};
+  $("fontRange").oninput=e=>{fontSize=+e.target.value;$("fontNum").textContent=fontSize;applyToSelected();};
+  function updateStrokePrev(){$("strokePrev").innerHTML='<div style="width:80%;height:'+Math.min(20,size)+'px;background:'+color+';border-radius:20px"></div>';}
+  function applyToSelected(){if(!selected)return;
+    if("color"in selected&&selected.type!=="whiteout")selected.color=color;
+    if("width"in selected)selected.width=(selected.type==="highlight")?Math.max(size,12):size;
+    if(selected.type==="text")selected.size=fontSize;
+    redraw();markDirty();}
+
+  /* ---------- actions ---------- */
+  function deleteSelected(){if(!selected)return;pushHistory();const l=anns();l.splice(l.indexOf(selected),1);selected=null;redraw();}
+  $("delBtn").onclick=deleteSelected;
+  $("clearBtn").onclick=()=>{if(!anns().length){return;}if(confirm("Remove all edits on this page?")){pushHistory();annotations[curPage-1]=[];selected=null;redraw();}};
+  $("undoBtn").onclick=()=>{if(!history.length)return;annotations=JSON.parse(history.pop());selected=null;redraw();$("undoBtn").disabled=!history.length;markDirty();};
+
+  /* ---------- export ---------- */
+  $("exportBtn").onclick=exportPDF;
+  async function exportPDF(){
+    if(!pdfDoc)return;commitText();showLoading("Building your PDF…");
+    try{
+      const src=await PDFLib.PDFDocument.load(pdfBytes);
+      const pages=src.getPages();
+      for(let i=0;i<pages.length;i++){
+        const list=annotations[i];if(!list||!list.length)continue;
+        const page=pages[i];const{width:pw,height:ph}=page.getSize();
+        const es=2.5;
+        const cv=document.createElement("canvas");cv.width=Math.round(pw*es);cv.height=Math.round(ph*es);
+        const ctx=cv.getContext("2d");
+        list.forEach(a=>drawOne(ctx,a,es));
+        const png=await src.embedPng(cv.toDataURL("image/png"));
+        page.drawImage(png,{x:0,y:0,width:pw,height:ph});
+      }
+      const bytes=await src.save();
+      const blob=new Blob([bytes],{type:"application/pdf"});
+      const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+      a.download=fileName.replace(/\.pdf$/i,"")+"-edited.pdf";a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+      dirty=false;toast("Exported · <b>"+a.download+"</b>");
+    }catch(err){console.error(err);toast("Export failed — see console.");}
+    hideLoading();
+  }
+
+  /* ---------- misc ---------- */
+  window.addEventListener("beforeunload",e=>{if(dirty){e.preventDefault();e.returnValue="";}});
+  window.addEventListener("resize",()=>{}); // keep current scale
+
+  /* ---------- init ---------- */
+  buildSwatches();updateStrokePrev();setTool("select");$("toolHint").innerHTML=TOOL_HINTS.select;
+})();
+</script>
+</body>
+</html>
